@@ -53,10 +53,86 @@ public class MyWebServer{
             System.err.println("Connection closed: " + e.getMessage());
         }
     }
+    static class HTTPRequest{
+        String command;
+        String filePath;
+        Date ifModifiedSince;
+        int errorCode;
 
+        HTTPRequest(String requestLine, BufferedReader in, String rootPath){
+            errorCode = 200;
+            ifModifiedSince = null;
 
+            StringTokenizer tokenizer = new StringTokenizer(requestLine);
+            if(tokenizer.countTokens() < 2){
+                errorCode = 400;
+                consumeRemainingHeaders(in);
+                return;
+            }
+            command = tokenizer.nextToken();
+            String url = tokenizer.nextToken();
 
-
+            if(!command.equals("GET") && !command.equals("HEAD")){
+                errorCode= 501;
+                consumeRemainingHeaders(in);
+                return;
+            }
+            if(url.toLowerCase().startsWith("http")){
+                int schemeEnd = url.indexOf("//");
+                int thirdSlash = (schemeEnd >= 0) ? url.indexOf('/', schemeEnd + 2) : -1;
+                url = (thirdSlash >= 0) ? url.substring(thirdSlash) : "/";
+            }
+            try{
+                String headerLine;
+                while((headerLine = in.readLine(0)) != null && !headerLine.isEmpty()){
+                    if (headerLine.toLowerCase().startsWith("if-modified-since:")){
+                        String dataStr = headerLine.substring(headerLine.indexOf(':') + 1).trim();
+                        ifModifiedSince = parseHttpDate(dataStr);
+                        if (ifModifiedSince == null){
+                            errorCode = 400;
+                            return;
+                        }
+                    }
+                }
+            }
+            catch(IOException e){
+                errorCode = 400;
+                return;
+            }
+            filePath = rootPath + url;
+            File f = new File(filePath);
+            if(f.isDirectory()){
+                if(!filePath.ednsWith("/")){
+                    filePath += "/";
+                }
+                filePath += "index.html";
+            }
+        }
+        private Date parseHttpDate(String dateStr){
+            String[] formats = {
+                    "EEE MMM d hh:mm:ss zzz yyyy",
+                    "EEE, dd MMM yyyy HH:mm:ss zzz",
+                    "EEEE, dd-MMM-yy HH:mm:ss zzz",
+                    "EEE MMM  d HH:mm:ss yyyy"
+            };
+            for(String fmt : formats){
+                try{
+                    SimpleDateFormat sdf = new SimpleDateFormat(fmt, Locale.US);
+                    sdf.settlement(false);
+                    return sdf.parse(dateStr);
+                }
+                catch(ParseException ignored){ }
+            }
+            return null;
+        }
+        private void consumeRemainingHeaders(BufferedReader in){
+            try{
+                String line;
+                while((line = in.readLine()) != null && !line.isEmpty()){ }
+            }
+            catch(IOException ignored){ }
+        }
+    }
 
 }
 
