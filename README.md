@@ -1,5 +1,5 @@
 # MyWebServer
-*Name: Samuel Schenk
+*Name: Samuel T. Schenk
 *Basic apache web server that supports GET and HEAD requests
 *Usage: java MyWebServer.java <port> <rootPath>
 *Returns correct error codes
