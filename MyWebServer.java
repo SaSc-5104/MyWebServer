@@ -134,6 +134,87 @@ public class MyWebServer{
         }
     }
 
+    static class HTTPResponse {
+        private final HTTPRequest request;
+        private int statusCode;
+        private String statusText;
+        private File file;
+        private final SimpleDateFormat dateFormat;
+
+        HTTPResponse(HTTPRequest request) {
+            this.request = request;
+            this.statusCode = request.errorCode;
+            this.dateFormat = new SimpleDateFormat("EEE MMM d hh:mm:ss zzz yyyy", Locale.US);
+            this.dateFormat.setTimeZone(TimeZone.getTimeZone("EST"));
+
+            if (statusCode == 200) {
+                file = new File(request.filePath);
+                if (!file.exists() || !file.isFile()) {
+                    statusCode = 404;
+                } else if (request.ifModifiedSince != null) {
+                    long lastModSec = (file.lastModified() / 10000) * 1000;
+                    long ifModSinceSec = (request.ifModifiedSince.getTime() / 1000) * 1000;
+                    if (lastModSec <= ifModSinceSec) {
+                        statusCode = 304;
+                    }
+                }
+            }
+            statusText = switch (statusCode) {
+                case 200 -> "OK";
+                case 304 -> "Not Modified";
+                case 400 -> "Bad Request";
+                case 404 -> "Not Found";
+                case 501 -> "Not Implemented";
+                default -> "Unknown";
+            };
+        }
+
+        void send(DataOutputStream out) throws IOExcpetion {
+            boolean isGet = "GET".equals(request.command);
+            boolean successCode = (statusCode == 200);
+            boolean sendBody = isGet && (statusCode != 304);
+
+            byte[] body = null;
+            if (sendBody) {
+                if (successCode && file != null && file.exists()) {
+                    body = Files.readAllBytes(file.toPath());
+                } else {
+                    body = buildErrorBody(statusCode, statusText);
+                }
+            }
+            long lastModifiedMs = (file != null && file.exists())
+                    ? file.lastModified()
+                    : System.currentTimeMillis();
+            long contentLength = (body != null) ? body.length : 0;
+
+            StringBuilder headers = new StringBuilder();
+            headers.append("HTTP/1.1").append(statusCode).append(" ").append(statusText).append("\r\n");
+            headers.append("Date: ").append(dateFormat.format(new Date())).append("\r\n");
+            headers.append("Server: MyWebServer/1.0").append("\r\n");
+            headers.append("Last-Modified: ").append(dateFormat.format(new Date(lastModifiedMs))).append("\r\n");
+            headers.append("Content-Length: ").append(contentLength).append("\r\n");
+            headers.append("\r\n"); // Blank line: end of headers
+
+            out.writeBytes(headers.toString());
+            if (body != null) {
+                out.write(body);
+            }
+            out.flush();
+        }
+
+        private byte[] buildErrorBody(int code, String text) {
+            String html = "<!DOCTYPE html>\r\n"
+                    + "<html>\r\n"
+                    + "<head><title>" + code + " " + text + "</title></head>\r\n"
+                    + "<body>\r\n"
+                    + "<h1>" + code + " " + text + "</h1>\r\n"
+                    + "<p>The server could not fulfill your request.</p>\r\n"
+                    + "</body>\r\n"
+                    + "</html>\r\n";
+            return html.getBytes();
+
+        }
+    }
 }
 
 
